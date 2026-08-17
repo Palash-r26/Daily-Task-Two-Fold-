@@ -1,0 +1,1 @@
+- [API contract Zod compatibility](api-contract-zod-compat.md) — keep OpenAPI formats/types compatible with the installed Zod generation target.

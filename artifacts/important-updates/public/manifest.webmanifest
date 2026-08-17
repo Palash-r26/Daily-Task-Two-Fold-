@@ -1,0 +1,17 @@
+{
+  "name": "Important Updates",
+  "short_name": "Updates",
+  "description": "A daily task list for the things that matter.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b18",
+  "theme_color": "#090b18",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

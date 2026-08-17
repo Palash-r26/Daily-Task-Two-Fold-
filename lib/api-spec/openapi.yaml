@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Important Updates private task and chat API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication and sessions
+  - name: tasks
+    description: Shared daily tasks
+  - name: chat
+    description: Private one-to-one chat
+  - name: settings
+    description: Shared app settings
 paths:
   /healthz:
     get:
@@ -24,6 +32,276 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in to Important Updates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Invalid credentials
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Sign out the current device
+      responses:
+        "204":
+          description: Signed out
+  /auth/devices:
+    get:
+      operationId: listDevices
+      tags: [auth]
+      summary: List active sessions
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+  /auth/devices/logout-everywhere:
+    post:
+      operationId: logoutEverywhere
+      tags: [auth]
+      summary: Revoke every session
+      responses:
+        "204":
+          description: Sessions revoked
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List shared tasks
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, pending, in_progress, complete]
+      responses:
+        "200":
+          description: Shared tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a shared task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /tasks/summary:
+    get:
+      operationId: getTaskSummary
+      tags: [tasks]
+      summary: Get task counts
+      responses:
+        "200":
+          description: Task summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskSummary"
+  /tasks/{id}:
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a shared task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a shared task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Task deleted
+  /chat/messages:
+    get:
+      operationId: listMessages
+      tags: [chat]
+      summary: List the private conversation
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      summary: Send a private message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "201":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+  /chat/messages/{id}:
+    patch:
+      operationId: editMessage
+      tags: [chat]
+      summary: Edit a private message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageUpdate"
+      responses:
+        "200":
+          description: Edited message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+    delete:
+      operationId: deleteMessage
+      tags: [chat]
+      summary: Delete a private message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Message deleted
+  /chat/partner:
+    get:
+      operationId: getChatPartner
+      tags: [chat]
+      summary: Get the other user
+      responses:
+        "200":
+          description: Chat partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get shared settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    patch:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update shared settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+  /journey:
+    get:
+      operationId: getJourney
+      tags: [settings]
+      summary: Get the private journey link
+      responses:
+        "200":
+          description: Journey link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +311,132 @@ components:
           type: string
       required:
         - status
+    User:
+      type: object
+      required: [id, displayName, email, profilePhotoUrl]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        profilePhotoUrl: { type: ["string", "null"] }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, minLength: 3, maxLength: 160 }
+        password: { type: string, minLength: 1, maxLength: 200 }
+    Device:
+      type: object
+      required: [id, label, createdAt, lastActiveAt, current]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time }
+        current: { type: boolean }
+    Task:
+      type: object
+      required: [id, title, description, status, assignedTo, createdBy, dueDate, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [pending, in_progress, complete]
+        assignedTo: { type: ["string", "null"] }
+        createdBy: { type: string }
+        dueDate: { type: ["string", "null"], format: date }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TaskInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: ["string", "null"], maxLength: 500 }
+        status:
+          type: string
+          enum: [pending, in_progress, complete]
+        assignedTo: { type: ["string", "null"] }
+        dueDate: { type: ["string", "null"], format: date }
+    TaskUpdate:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: ["string", "null"], maxLength: 500 }
+        status:
+          type: string
+          enum: [pending, in_progress, complete]
+        assignedTo: { type: ["string", "null"] }
+        dueDate: { type: ["string", "null"], format: date }
+    TaskSummary:
+      type: object
+      required: [total, pending, inProgress, complete]
+      properties:
+        total: { type: number }
+        pending: { type: number }
+        inProgress: { type: number }
+        complete: { type: number }
+    Message:
+      type: object
+      required: [id, senderId, senderName, content, createdAt, editedAt, deletedAt, deliveryStatus, readAt]
+      properties:
+        id: { type: string }
+        senderId: { type: string }
+        senderName: { type: string }
+        content: { type: string }
+        createdAt: { type: string, format: date-time }
+        editedAt: { type: ["string", "null"], format: date-time }
+        deletedAt: { type: ["string", "null"], format: date-time }
+        deliveryStatus:
+          type: string
+          enum: [sent, delivered, read]
+        readAt: { type: ["string", "null"], format: date-time }
+    MessageInput:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 2000 }
+    MessageUpdate:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 2000 }
+    AppSettings:
+      type: object
+      required: [theme, bubbleStyle, autoLock, notifications, journeyUrl]
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, system]
+        bubbleStyle:
+          type: string
+          enum: [emoji, newspaper]
+        autoLock:
+          type: string
+          enum: [immediate, one_minute, five_minutes, never]
+        notifications: { type: boolean }
+        journeyUrl: { type: string }
+    SettingsUpdate:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, system]
+        bubbleStyle:
+          type: string
+          enum: [emoji, newspaper]
+        autoLock:
+          type: string
+          enum: [immediate, one_minute, five_minutes, never]
+        notifications: { type: boolean }
+        journeyUrl: { type: string }
+    Journey:
+      type: object
+      required: [title, description, url]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        url: { type: string }
 
