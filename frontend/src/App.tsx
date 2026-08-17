@@ -1098,13 +1098,14 @@ function PartnerConnectCard({ onConnected }: { onConnected: () => void }) {
 
 function ChatPage() {
   const current = useGetCurrentUser({ query: { queryKey: getGetCurrentUserQueryKey() } });
-  const { data: partner, isLoading: partnerLoading, refetch: refetchPartner } = useGetChatPartner({ query: { queryKey: getGetChatPartnerQueryKey() } });
-  const { data: messages, isLoading, isError, refetch } = useListMessages({ query: { queryKey: getListMessagesQueryKey(), refetchInterval: 3000 } });
+  const { data: partner, isLoading: partnerLoading, isError: partnerError, refetch: refetchPartner } = useGetChatPartner({
+    query: { queryKey: getGetChatPartnerQueryKey(), retry: false },
+  });
+  const { data: messages, isLoading, isError, refetch } = useListMessages({
+    query: { queryKey: getListMessagesQueryKey(), refetchInterval: 3000, enabled: !!partner },
+  });
   const { data: settings } = useGetSettings({ query: { queryKey: getGetSettingsQueryKey() } });
 
-  if (!partnerLoading && (!partner || isError)) {
-    return <PartnerConnectCard onConnected={() => { refetchPartner(); refetch(); }} />;
-  }
   const send = useSendMessage();
   const edit = useEditMessage();
   const remove = useDeleteMessage();
@@ -1115,22 +1116,26 @@ function ChatPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [localTempMsg, setLocalTempMsg] = useState<{ content: string; stage: 'text' | 'emojis' | 'symbols' } | null>(null);
-
   const lastMsgCount = useRef<number | null>(null);
+
   useEffect(() => {
     if (!messages) return;
     if (lastMsgCount.current !== null && messages.length > lastMsgCount.current) {
       const latest = messages[messages.length - 1];
       if (latest && latest.senderId !== current.data?.id && settings?.notifications !== false) {
         toast({
-          title: 'New message from Daily Tasks',
+          title: 'New message from TwoFold',
           description: 'A sealed message has arrived in your private room. Tap to reveal!',
         });
-        triggerSystemNotification('New message from Daily Tasks', 'A sealed message has arrived in your private room.');
+        triggerSystemNotification('New message from TwoFold', 'A sealed message has arrived in your private room.');
       }
     }
     lastMsgCount.current = messages.length;
   }, [messages, current.data?.id, settings?.notifications, toast]);
+
+  if (!partnerLoading && (!partner || partnerError)) {
+    return <PartnerConnectCard onConnected={() => { refetchPartner(); refetch(); }} />;
+  }
 
   const reveal = (id: string) => setRevealed((previous) => new Set(previous).add(id));
   const sendMessage = (event: FormEvent) => {
@@ -1505,36 +1510,59 @@ function MyProfileSection({ user, onSignOut }: { user?: User | null; onSignOut: 
 function PrivacyPolicySection() {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-foreground/90">
-      <div className="rounded-xl border border-border/70 bg-background p-4 space-y-3">
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-center">
+        <p className="font-serif-display text-lg text-primary">A Personal Promise & Privacy Commitment</p>
+        <p className="mt-1 text-xs text-muted-foreground">Built exclusively for two with complete respect, trust, and zero compromise on data security.</p>
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-background p-4 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 font-bold text-xs">1</div>
           <div>
-            <p className="font-bold text-foreground">Private & Exclusive 2-Seat Access</p>
-            <p className="mt-1 text-xs text-muted-foreground">Your workspace and private room are restricted strictly to you and your designated partner. No public listings or external observers.</p>
+            <p className="font-bold text-foreground">Built to Keep Us Connected</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              First of all, this app is built for us. It does not go away from you — its sole purpose is to keep me connected with you. It does not want to harm any feelings or anything regarding you.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 pt-2 border-t border-border/60">
+        <div className="flex items-start gap-3 pt-3 border-t border-border/60">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 font-bold text-xs">2</div>
           <div>
-            <p className="font-bold text-foreground">Client-Side Sealed Messages</p>
-            <p className="mt-1 text-xs text-muted-foreground">All messages delivered in the chat are presented using closed emoji ciphers until explicitly tapped and revealed by the receiver.</p>
+            <p className="font-bold text-foreground">Complete Respect & Kindness</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              This app does not want to defame you, disrespect you, or destroy you. The main reason for this app is simply to connect with you in a peaceful, quiet space.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 pt-2 border-t border-border/60">
+        <div className="flex items-start gap-3 pt-3 border-t border-border/60">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 font-bold text-xs">3</div>
           <div>
-            <p className="font-bold text-foreground">Zero Third-Party Data Sharing</p>
-            <p className="mt-1 text-xs text-muted-foreground">We never track, store for advertising, sell, or disclose your personal tasks, messages, or account credentials to any third parties.</p>
+            <p className="font-bold text-foreground">I Always Respect Your Decisions</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              I always respect you and your decisions. I don’t ever want to force you into anything — your space and boundaries are always honored.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 pt-2 border-t border-border/60">
+        <div className="flex items-start gap-3 pt-3 border-t border-border/60">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 font-bold text-xs">4</div>
           <div>
-            <p className="font-bold text-foreground">Locked Credentials & Security</p>
-            <p className="mt-1 text-xs text-muted-foreground">Primary emails are locked to prevent unauthorized alterations. Session tokens are secured, and PIN passcodes protect sensitive pages.</p>
+            <p className="font-bold text-foreground">Strict Data Privacy & Zero Leakage</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              There is zero data leakage. Data privacy is strictly committed and all communications are totally private — so don’t worry about anything, nothing goes away.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 pt-3 border-t border-border/60">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 font-bold text-xs">5</div>
+          <div>
+            <p className="font-bold text-foreground">Always Here For You</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed font-medium text-foreground">
+              The last and most important point: I’m always here for you.
+            </p>
           </div>
         </div>
       </div>
