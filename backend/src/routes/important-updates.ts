@@ -48,79 +48,17 @@ let seedPromise: Promise<void> | undefined;
 const ensureSeed = () => {
   if (!seedPromise) {
     seedPromise = (async () => {
-      const existing = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-      if (existing.length > 0) return;
-
-      const firstId = "user-alex";
-      const secondId = "user-sam";
-      const passwordHash = await bcrypt.hash("Update!2026", 12);
-      await db.insert(usersTable).values([
-        {
-          id: firstId,
-          displayName: "Alex",
-          email: "alex@example.com",
-          passwordHash,
-          profilePhotoUrl: null,
-        },
-        {
-          id: secondId,
-          displayName: "Sam",
-          email: "sam@example.com",
-          passwordHash,
-          profilePhotoUrl: null,
-        },
-      ]);
-      await db.insert(appSettingsTable).values({
-        id: "global",
-        theme: "dark",
-        bubbleStyle: "emoji",
-        autoLock: "five_minutes",
-        notifications: true,
-        journeyUrl: DEFAULT_JOURNEY_URL,
-      });
-
-      const now = new Date();
-      await db.insert(tasksTable).values([
-        {
-          id: randomUUID(),
-          title: "Plan something lovely for this week",
-          description: "A small shared plan goes a long way.",
-          status: "in_progress",
-          assignedTo: secondId,
-          createdBy: firstId,
-          dueDate: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          id: randomUUID(),
-          title: "Pick up the little things",
-          description: "The everyday details that make the day feel easy.",
-          status: "pending",
-          assignedTo: firstId,
-          createdBy: secondId,
-          dueDate: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
-      await db.insert(messagesTable).values([
-        {
-          id: randomUUID(),
-          senderId: secondId,
-          content: "The quiet moments are my favorite.",
-          createdAt: new Date(now.getTime() - 1000 * 60 * 18),
-          deliveryStatus: "read",
-          readAt: new Date(now.getTime() - 1000 * 60 * 17),
-        },
-        {
-          id: randomUUID(),
-          senderId: firstId,
-          content: "Then let's keep making room for them.",
-          createdAt: new Date(now.getTime() - 1000 * 60 * 12),
-          deliveryStatus: "delivered",
-        },
-      ]);
+      const settings = await db.select().from(appSettingsTable).where(eq(appSettingsTable.id, "global")).limit(1);
+      if (settings.length === 0) {
+        await db.insert(appSettingsTable).values({
+          id: "global",
+          theme: "dark",
+          bubbleStyle: "emoji",
+          autoLock: "five_minutes",
+          notifications: true,
+          journeyUrl: DEFAULT_JOURNEY_URL,
+        });
+      }
     })();
   }
   return seedPromise;

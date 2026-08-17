@@ -576,22 +576,41 @@ function LoginPage() {
       <div className="mb-8 flex flex-col items-center justify-center text-center">
         <Link href="/welcome" className="flex flex-col items-center gap-2.5 hover:opacity-90 transition group">
           <AppLogo size={56} className="group-hover:scale-105 transition-transform" />
-          <span className="font-serif-display text-3xl text-foreground tracking-tight">Daily Tasks</span>
+          <span className="font-serif-display text-3xl text-foreground tracking-tight">TwoFold</span>
         </Link>
       </div>
       <Surface className="p-6 shadow-xl sm:p-8">
-        <div className="mb-6 text-center"><p className="font-mono-ui text-[10px] uppercase tracking-[.2em] text-primary font-semibold">Welcome</p><h1 className="mt-2 font-serif-display text-4xl leading-tight tracking-tight text-foreground">Sign In</h1><p className="mt-2 text-sm text-muted-foreground">Enter your email and password to continue.</p></div>
+        <div className="mb-6 text-center">
+          <p className="font-mono-ui text-[10px] uppercase tracking-[.2em] text-primary font-semibold">Welcome Back</p>
+          <h1 className="mt-2 font-serif-display text-4xl leading-tight tracking-tight text-foreground">Sign In</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Enter your email and password to access your private room.</p>
+        </div>
         <form onSubmit={submit} className="space-y-4">
-          <label className="block"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</span><input data-testid="input-email" required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="min-h-12 w-full rounded-xl border border-input bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10" /></label>
-          <label className="block"><div className="flex items-center justify-between mb-2"><span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</span><Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">Forgot password?</Link></div><div className="relative"><input data-testid="input-password" required minLength={6} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" className="min-h-12 w-full rounded-xl border border-input bg-background px-4 pr-12 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10" /><button type="button" data-testid="button-toggle-password" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground hover:text-foreground">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
-          {error && <p data-testid="status-login-error" className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive">{error}</p>}
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</span>
+            <input data-testid="input-email" required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="min-h-12 w-full rounded-xl border border-input bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10" />
+          </label>
+          <label className="block">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</span>
+              <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">Forgot password?</Link>
+            </div>
+            <div className="relative">
+              <input data-testid="input-password" required minLength={6} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" className="min-h-12 w-full rounded-xl border border-input bg-background px-4 pr-12 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10" />
+              <button type="button" data-testid="button-toggle-password" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground hover:text-foreground">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+            </div>
+          </label>
+          {error && <p data-testid="status-login-error" className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive font-medium">{error}</p>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending} className="mt-2 w-full">{login.isPending ? 'Signing in…' : 'Sign In'} <ArrowUpRight size={16} /></Button>
         </form>
+
+
+
         <div className="mt-6 border-t border-border/60 pt-4 text-center">
           <p className="text-xs text-muted-foreground">
             Don't have an account yet?{' '}
             <Link href="/signup" className="font-bold text-primary hover:underline">
-              Sign Up
+              Create New Account
             </Link>
           </p>
         </div>
