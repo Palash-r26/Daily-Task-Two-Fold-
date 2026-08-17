@@ -458,7 +458,7 @@ function SignUpPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
 
@@ -471,22 +471,24 @@ function SignUpPage() {
     if (password !== confirmPassword) return setError('Passwords do not match.');
 
     setLoading(true);
-    setTimeout(() => {
-      login.mutate(
-        { data: { email: cleanEmail, password } },
-        {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
-            setLocation('/');
-          },
-          onError: () => {
-            setLoading(false);
-            setError('Account registered successfully! Redirecting to home...');
-            setTimeout(() => setLocation('/'), 1200);
-          }
-        }
-      );
-    }, 600);
+    try {
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ displayName: cleanName, email: cleanEmail, password }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        return setError(data.error || 'Registration failed. Please try again.');
+      }
+      queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
+      setLocation('/');
+    } catch {
+      setLoading(false);
+      setError('Registration failed. Please check your connection and try again.');
+    }
   };
 
   return (
@@ -576,7 +578,7 @@ function LoginPage() {
       <div className="mb-8 flex flex-col items-center justify-center text-center">
         <Link href="/welcome" className="flex flex-col items-center gap-2.5 hover:opacity-90 transition group">
           <AppLogo size={56} className="group-hover:scale-105 transition-transform" />
-          <span className="font-serif-display text-3xl text-foreground tracking-tight">TwoFold</span>
+          <span className="font-serif-display text-3xl text-foreground tracking-tight">Daily Tasks</span>
         </Link>
       </div>
       <Surface className="p-6 shadow-xl sm:p-8">

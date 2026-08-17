@@ -121,7 +121,7 @@ router.get("/auth/me", async (req, res) => {
   return res.json(publicUser(session.user));
 });
 
-router.post("/auth/login", async (req, res) => {
+router.post(["/login", "/auth/login"], async (req, res) => {
   await ensureSeed();
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and password" });
@@ -129,11 +129,11 @@ router.post("/auth/login", async (req, res) => {
   const userResult = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.email, parsed.data.email.toLowerCase()))
+    .where(eq(usersTable.email, parsed.data.email.trim().toLowerCase()))
     .limit(1);
   const user = userResult[0];
   if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-    return res.status(401).json({ error: "Those details did not match" });
+    return res.status(401).json({ error: "Incorrect email or password." });
   }
 
   const sessionId = `${randomUUID()}.${SESSION_SECRET.slice(0, 8)}`;
@@ -152,6 +152,76 @@ router.post("/auth/login", async (req, res) => {
     maxAge: 1000 * 60 * 60 * 24 * 30,
   });
   return res.json(publicUser(user));
+});
+
+router.post(["/signup", "/auth/signup"], async (req, res) => {
+  await ensureSeed();
+  const { displayName, email, password } = req.body || {};
+
+  if (!displayName || typeof displayName !== "string" || !displayName.trim()) {
+    return res.status(400).json({ error: "Please enter your full display name." });
+  }
+
+  if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
+
+  if (!password || typeof password !== "string" || password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = displayName.trim();
+
+  const existingUser = await db.select().from(usersTable).where(eq(usersTable.email, cleanEmail)).limit(1);
+  if (existingUser[0]) {
+    return res.status(400).json({ error: "An account with this email already exists. Please sign in instead." });
+  }
+
+  const userId = randomUUID();
+  const passwordHash = await bcrypt.hash(password, 10);
+  const inviteCode = `PAIR-${userId.slice(0, 5).toUpperCase()}`;
+
+  await db.insert(usersTable).values({
+    id: userId,
+    displayName: cleanName,
+    email: cleanEmail,
+    passwordHash,
+    inviteCode,
+    profilePhotoUrl: null,
+  });
+
+  const sessionId = `${randomUUID()}.${SESSION_SECRET.slice(0, 8)}`;
+  const now = new Date();
+  await db.insert(sessionsTable).values({
+    id: sessionId,
+    userId: userId,
+    deviceLabel: req.get("user-agent")?.slice(0, 80) || "Mobile browser",
+    createdAt: now,
+    lastActiveAt: now,
+  });
+
+  res.cookie(SESSION_COOKIE, sessionId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 1000 * 60 * 60 * 24 * 30,
+  });
+
+  const newUser = {
+    id: userId,
+    displayName: cleanName,
+    email: cleanEmail,
+    passwordHash,
+    inviteCode,
+    profilePhotoUrl: null,
+    partnerId: null,
+    resetToken: null,
+    resetTokenExpiry: null,
+    createdAt: now,
+  };
+
+  return res.status(201).json(publicUser(newUser));
 });
 
 router.post("/auth/logout", async (req, res) => {
