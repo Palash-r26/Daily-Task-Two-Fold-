@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { sendPasswordResetEmail } from "../lib/mailer";
+import webpush from "web-push";
 import {
   db,
   appSettingsTable,
@@ -11,6 +12,7 @@ import {
   sessionsTable,
   tasksTable,
   usersTable,
+  pushSubscriptionsTable,
 } from "../db";
 import {
   CreateTaskBody,
@@ -26,6 +28,15 @@ import {
   DeleteMessageParams,
 } from "../api-zod";
 import { randomUUID } from "node:crypto";
+
+// ─── VAPID / Web Push setup ────────────────────────────────────────────────
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  ?? "";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY ?? "";
+const VAPID_EMAIL   = process.env.VAPID_EMAIL       ?? "mailto:admin@example.com";
+
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
+}
 
 const router: IRouter = Router();
 const SESSION_COOKIE = "iu_session";
@@ -378,6 +389,53 @@ router.post("/chat/messages", async (req, res) => {
     readAt: null,
   } as const;
   await db.insert(messagesTable).values(message);
+
+  // ── Send Web Push to the partner's subscribed devices ─────────────────
+  if (VAPID_PUBLIC && VAPID_PRIVATE) {
+    try {
+      // Find the partner (anyone who is not the sender)
+      const partner = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(ne(usersTable.id, session.user.id))
+        .limit(1);
+
+      if (partner[0]) {
+        const subs = await db
+          .select()
+          .from(pushSubscriptionsTable)
+          .where(eq(pushSubscriptionsTable.userId, partner[0].id));
+
+        const payload = JSON.stringify({
+          title: `New message from ${session.user.displayName}`,
+          body: "A sealed message has arrived. Tap to reveal!",
+          url: "/chat",
+        });
+
+        // Fire-and-forget — don't block the response
+        Promise.allSettled(
+          subs.map((sub) =>
+            webpush
+              .sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                payload,
+              )
+              .catch(async (err: { statusCode?: number }) => {
+                // 410 Gone / 404 = subscription expired — clean it up
+                if (err?.statusCode === 410 || err?.statusCode === 404) {
+                  await db
+                    .delete(pushSubscriptionsTable)
+                    .where(eq(pushSubscriptionsTable.endpoint, sub.endpoint));
+                }
+              }),
+          ),
+        );
+      }
+    } catch {
+      // Push errors must never break the message response
+    }
+  }
+
   return res.status(201).json(mapMessage({ message, senderName: session.user.displayName }));
 });
 
@@ -469,6 +527,64 @@ router.get("/settings", async (req, res) => {
   await ensureSeed();
   const settings = await db.select().from(appSettingsTable).where(eq(appSettingsTable.id, "global")).limit(1);
   return res.json(settings[0]);
+});
+
+// ─── Web Push subscription endpoints ─────────────────────────────────────
+
+/** Return the VAPID public key so the frontend can subscribe */
+router.get("/push/vapid-public-key", (_req, res) => {
+  return res.json({ publicKey: VAPID_PUBLIC });
+});
+
+/** Save a push subscription for the current user's device */
+router.post("/push/subscribe", async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) {
+    return res.status(400).json({ error: "Invalid push subscription" });
+  }
+
+  // Upsert: delete existing sub for same endpoint, then insert fresh
+  await db
+    .delete(pushSubscriptionsTable)
+    .where(eq(pushSubscriptionsTable.endpoint, endpoint));
+
+  await db.insert(pushSubscriptionsTable).values({
+    id: randomUUID(),
+    userId: session.user.id,
+    endpoint,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+  });
+
+  return res.status(201).json({ ok: true });
+});
+
+/** Remove a push subscription (called on logout) */
+router.delete("/push/unsubscribe", async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+
+  const { endpoint } = req.body || {};
+  if (endpoint) {
+    await db
+      .delete(pushSubscriptionsTable)
+      .where(
+        and(
+          eq(pushSubscriptionsTable.userId, session.user.id),
+          eq(pushSubscriptionsTable.endpoint, endpoint),
+        ),
+      );
+  } else {
+    // Remove ALL subscriptions for this user (logout everywhere)
+    await db
+      .delete(pushSubscriptionsTable)
+      .where(eq(pushSubscriptionsTable.userId, session.user.id));
+  }
+
+  return res.status(204).send();
 });
 
 router.patch("/settings", async (req, res) => {

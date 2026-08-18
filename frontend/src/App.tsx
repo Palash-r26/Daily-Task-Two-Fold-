@@ -106,24 +106,80 @@ const relativeTimeLabel = (isoDate: string): string => {
   return dateLabel(isoDate) + ', ' + timeLabel(isoDate);
 };
 const triggerSystemNotification = (title: string, body: string) => {
-  if (typeof window !== 'undefined' && 'Notification' in window) {
-    if (Notification.permission === 'granted') {
-      try {
-        new Notification(title, { body, icon: '/favicon.ico' });
-      } catch {
-        // Fallback
-      }
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then((permission) => {
-        if (permission === 'granted') {
-          try {
-            new Notification(title, { body, icon: '/favicon.ico' });
-          } catch {
-            // Fallback
-          }
-        }
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  const fire = () => {
+    try { new Notification(title, { body, icon: '/favicon.ico' }); } catch { /* ignore */ }
+  };
+  if (Notification.permission === 'granted') {
+    fire();
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then((p) => { if (p === 'granted') fire(); });
+  }
+};
+
+const requestNotificationPermission = async (): Promise<NotificationPermission> => {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+  if (Notification.permission === 'granted') return 'granted';
+  if (Notification.permission === 'denied') return 'denied';
+  return Notification.requestPermission();
+};
+
+const subscribeToPushNotifications = async () => {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const registration = await navigator.serviceWorker.ready;
+    const existingSub = await registration.pushManager.getSubscription();
+    if (existingSub) {
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(existingSub),
+      });
+      return;
+    }
+    const vapidKeyRes = await fetch('/api/push/vapid-public-key');
+    if (!vapidKeyRes.ok) throw new Error('Failed to fetch VAPID key');
+    const { publicKey } = await vapidKeyRes.json();
+    if (!publicKey) return;
+
+    const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
+    const base64 = (publicKey + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: outputArray,
+    });
+
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription),
+    });
+  } catch (error) {
+    console.error('Error subscribing to push notifications:', error);
+  }
+};
+
+const unsubscribeFromPushNotifications = async () => {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      await subscription.unsubscribe();
+      await fetch('/api/push/unsubscribe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
       });
     }
+  } catch (error) {
+    console.error('Error unsubscribing from push notifications:', error);
   }
 };
 
@@ -221,6 +277,21 @@ function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
 
+  // Request browser notification permission as soon as the app is loaded and
+  // the user has notifications enabled in settings.
+  useEffect(() => {
+    if (settings?.notifications !== false) {
+      requestNotificationPermission().then((permission) => {
+        if (permission === 'granted') {
+          void subscribeToPushNotifications();
+        }
+      });
+    }
+  }, [settings?.notifications]);
+
+  // Global background notifier — fires even when NOT on /chat
+  useGlobalMessageNotifier();
+
   useEffect(() => {
     const theme = settings?.theme;
     const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -244,7 +315,11 @@ function AppShell({ children }: { children: ReactNode }) {
   const endPress = () => {
     if (longPress.current) clearTimeout(longPress.current);
   };
-  const signOut = () => logout.mutate(undefined, { onSuccess: () => { queryClient.removeQueries(); setLocation('/login'); } });
+  const signOut = () => {
+    void unsubscribeFromPushNotifications().finally(() => {
+      logout.mutate(undefined, { onSuccess: () => { queryClient.removeQueries(); setLocation('/login'); } });
+    });
+  };
 
   return (
     <div className="grain min-h-[100dvh] bg-background text-foreground relative overflow-x-hidden">
@@ -1096,6 +1171,41 @@ function PartnerConnectCard({ onConnected }: { onConnected: () => void }) {
   );
 }
 
+/**
+ * Global background message poller — fires notifications even when the user
+ * is NOT on the /chat page. Mounted once inside AppShell so it's always active.
+ */
+function useGlobalMessageNotifier() {
+  const current = useGetCurrentUser({ query: { queryKey: getGetCurrentUserQueryKey() } });
+  const { data: partner } = useGetChatPartner({ query: { queryKey: getGetChatPartnerQueryKey(), retry: false } });
+  const { data: settings } = useGetSettings({ query: { queryKey: getGetSettingsQueryKey() } });
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const lastMsgCount = useRef<number | null>(null);
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (!partner || settings?.notifications === false) return;
+    // Poll every 5 s when NOT on the chat page; chat page has its own 3 s interval
+    const interval = setInterval(async () => {
+      const msgs = client.getQueryData<{ id: string; senderId: string }[]>(getListMessagesQueryKey());
+      if (!msgs) return;
+      if (lastMsgCount.current !== null && msgs.length > lastMsgCount.current) {
+        const latest = msgs[msgs.length - 1];
+        if (latest && latest.senderId !== current.data?.id) {
+          toast({
+            title: 'New sealed message ✉️',
+            description: 'A message has arrived in your private room.',
+          });
+          triggerSystemNotification('New sealed message', 'A message has arrived in your private room.');
+        }
+      }
+      lastMsgCount.current = msgs.length;
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [partner, settings?.notifications, current.data?.id, client, toast, location]);
+}
+
 function ChatPage() {
   const current = useGetCurrentUser({ query: { queryKey: getGetCurrentUserQueryKey() } });
   const { data: partner, isLoading: partnerLoading, isError: partnerError, refetch: refetchPartner } = useGetChatPartner({
@@ -1116,6 +1226,7 @@ function ChatPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [localTempMsg, setLocalTempMsg] = useState<{ content: string; stage: 'text' | 'emojis' | 'symbols' } | null>(null);
+  // Chat page tracks its own count independently; global notifier handles cross-page
   const lastMsgCount = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1124,10 +1235,10 @@ function ChatPage() {
       const latest = messages[messages.length - 1];
       if (latest && latest.senderId !== current.data?.id && settings?.notifications !== false) {
         toast({
-          title: 'New message from TwoFold',
-          description: 'A sealed message has arrived in your private room. Tap to reveal!',
+          title: 'New sealed message ✉️',
+          description: 'A message has arrived in your private room. Tap to reveal!',
         });
-        triggerSystemNotification('New message from TwoFold', 'A sealed message has arrived in your private room.');
+        triggerSystemNotification('New sealed message', 'A message has arrived in your private room.');
       }
     }
     lastMsgCount.current = messages.length;
@@ -1289,7 +1400,11 @@ function SettingsPage() {
   if (isError || !settings) return <ErrorState label="Settings could not be loaded." action={refetch} />;
 
   const patch = (data: Partial<AppSettings>) => update.mutate({ data }, { onSuccess: (next) => client.setQueryData(getGetSettingsQueryKey(), next) });
-  const signOut = () => logout.mutate(undefined, { onSuccess: () => { client.clear(); setLocation('/login'); } });
+  const signOut = () => {
+    void unsubscribeFromPushNotifications().finally(() => {
+      logout.mutate(undefined, { onSuccess: () => { client.clear(); setLocation('/login'); } });
+    });
+  };
   const hasPin = Boolean(localStorage.getItem('iu_pin'));
 
   const savePin = (event: FormEvent) => {
@@ -1331,8 +1446,42 @@ function SettingsPage() {
                 <div>
                   <p className="text-sm font-semibold">{settings.notifications ? 'Notifications Enabled' : 'Notifications Disabled'}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Receive alerts for new incoming messages.</p>
+                  {'Notification' in window && Notification.permission === 'denied' && settings.notifications && (
+                    <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-amber-500">
+                      <BellOff size={12} /> Browser blocked — allow notifications in your browser settings.
+                    </p>
+                  )}
+                  {'Notification' in window && Notification.permission === 'default' && settings.notifications && (
+                    <button
+                      type="button"
+                      data-testid="button-request-notification-permission"
+                      onClick={() => {
+                        requestNotificationPermission().then((permission) => {
+                          if (permission === 'granted') void subscribeToPushNotifications();
+                        });
+                      }}
+                      className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      <Bell size={12} /> Tap to allow browser notifications
+                    </button>
+                  )}
                 </div>
-                <button type="button" data-testid="button-toggle-notifications" onClick={() => patch({ notifications: !settings.notifications })} className={cx('relative h-7 w-12 rounded-full transition', settings.notifications ? 'bg-primary' : 'bg-muted')}>
+                <button
+                  type="button"
+                  data-testid="button-toggle-notifications"
+                  onClick={() => {
+                    const next = !settings.notifications;
+                    patch({ notifications: next });
+                    if (next) {
+                      requestNotificationPermission().then((permission) => {
+                        if (permission === 'granted') void subscribeToPushNotifications();
+                      });
+                    } else {
+                      void unsubscribeFromPushNotifications();
+                    }
+                  }}
+                  className={cx('relative h-7 w-12 rounded-full transition', settings.notifications ? 'bg-primary' : 'bg-muted')}
+                >
                   <span className={cx('absolute top-1 h-5 w-5 rounded-full bg-card shadow-sm transition-transform', settings.notifications ? 'translate-x-6' : 'translate-x-1')} />
                 </button>
               </div>
