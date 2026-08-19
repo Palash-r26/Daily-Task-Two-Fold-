@@ -1,5 +1,5 @@
-const CACHE_NAME = "important-updates-shell-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
+const CACHE_NAME = "important-updates-shell-v2";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -46,10 +46,11 @@ self.addEventListener("push", (event) => {
     body: data.body,
     icon: "/app-logo.png",
     badge: "/app-logo.png",
-    tag: "daily-tasks-message",
+    tag: `daily-tasks-message-${Date.now()}`,
     renotify: true,
     vibrate: [200, 100, 200],
     data: { url: data.url },
+    requireInteraction: true,
   };
 
   event.waitUntil(self.registration.showNotification(data.title, options));

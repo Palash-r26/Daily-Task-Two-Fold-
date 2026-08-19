@@ -158,8 +158,8 @@ router.post(["/login", "/auth/login"], async (req, res) => {
   });
   res.cookie(SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: true,
     maxAge: 1000 * 60 * 60 * 24 * 30,
   });
   return res.json(publicUser(user));
@@ -214,8 +214,8 @@ router.post(["/signup", "/auth/signup"], async (req, res) => {
 
   res.cookie(SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: true,
     maxAge: 1000 * 60 * 60 * 24 * 30,
   });
 
@@ -393,18 +393,19 @@ router.post("/chat/messages", async (req, res) => {
   // ── Send Web Push to the partner's subscribed devices ─────────────────
   if (VAPID_PUBLIC && VAPID_PRIVATE) {
     try {
-      // Find the partner (anyone who is not the sender)
-      const partner = await db
-        .select({ id: usersTable.id })
+      // Find the actual partner via partnerId (not just any random user)
+      const currentUser = await db
+        .select({ partnerId: usersTable.partnerId })
         .from(usersTable)
-        .where(ne(usersTable.id, session.user.id))
+        .where(eq(usersTable.id, session.user.id))
         .limit(1);
+      const partnerId = currentUser[0]?.partnerId;
 
-      if (partner[0]) {
+      if (partnerId) {
         const subs = await db
           .select()
           .from(pushSubscriptionsTable)
-          .where(eq(pushSubscriptionsTable.userId, partner[0].id));
+          .where(eq(pushSubscriptionsTable.userId, partnerId));
 
         const payload = JSON.stringify({
           title: `New message from ${session.user.displayName}`,
@@ -478,9 +479,6 @@ router.get("/chat/partner", async (req, res) => {
     if (partner[0]) return res.json(publicUser(partner[0]));
   }
 
-  const fallbackPartner = await db.select().from(usersTable).where(ne(usersTable.id, session.user.id)).limit(1);
-  if (fallbackPartner[0]) return res.json(publicUser(fallbackPartner[0]));
-  
   return res.status(404).json({ error: "No partner connected yet" });
 });
 
@@ -515,10 +513,37 @@ router.post("/chat/partner/connect", async (req, res) => {
 
   const partner = targetUsers[0];
 
+  // Prevent connecting if either user already has a partner
+  const currentUserRecord = await db.select().from(usersTable).where(eq(usersTable.id, session.user.id)).limit(1);
+  if (currentUserRecord[0]?.partnerId) {
+    return res.status(400).json({ error: "You are already connected to a partner. Disconnect first." });
+  }
+  if (partner.partnerId) {
+    return res.status(400).json({ error: "This person is already connected to someone else." });
+  }
+
   await db.update(usersTable).set({ partnerId: partner.id }).where(eq(usersTable.id, session.user.id));
   await db.update(usersTable).set({ partnerId: session.user.id }).where(eq(usersTable.id, partner.id));
 
   return res.json(publicUser(partner));
+});
+
+router.post("/chat/partner/disconnect", async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+
+  const currentUser = await db.select().from(usersTable).where(eq(usersTable.id, session.user.id)).limit(1);
+  if (!currentUser[0]?.partnerId) {
+    return res.status(400).json({ error: "You are not connected to a partner." });
+  }
+
+  const partnerId = currentUser[0].partnerId;
+
+  // Clear partnerId for both users
+  await db.update(usersTable).set({ partnerId: null }).where(eq(usersTable.id, session.user.id));
+  await db.update(usersTable).set({ partnerId: null }).where(eq(usersTable.id, partnerId));
+
+  return res.json({ message: "Partner disconnected successfully." });
 });
 
 router.get("/settings", async (req, res) => {

@@ -1276,12 +1276,47 @@ function ChatPage() {
     }, 250);
   };
 
+  const handleDisconnectPartner = async () => {
+    if (!window.confirm(`Disconnect from ${partner?.displayName || 'your partner'}? You will need to re-scan a QR code to pair again.`)) return;
+    try {
+      const res = await fetch('/api/chat/partner/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        toast({ title: 'Partner Disconnected', description: 'You have disconnected from your partner.' });
+        client.invalidateQueries({ queryKey: getGetChatPartnerQueryKey() });
+        client.invalidateQueries({ queryKey: getListMessagesQueryKey() });
+        refetchPartner();
+      } else {
+        const data = await res.json();
+        toast({ title: 'Error', description: data.error || 'Failed to disconnect.' });
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Could not disconnect. Check your connection.' });
+    }
+  };
+
   const saveEdit = (id: string) => { const clean = editingContent.trim(); if (!clean) return; edit.mutate({ id, data: { content: clean } }, { onSuccess: () => { setEditingId(null); client.invalidateQueries({ queryKey: getListMessagesQueryKey() }); } }); };
   const deleteMessage = (id: string) => { if (window.confirm('Delete this message for me?')) remove.mutate({ id }, { onSuccess: () => client.invalidateQueries({ queryKey: getListMessagesQueryKey() }) }); };
   return <div className="mx-auto max-w-3xl animate-rise-in">
     <div className="mb-7 flex flex-col items-center justify-center text-center gap-2 relative"><p className="font-mono-ui text-[10px] uppercase tracking-[.24em] text-primary">private & two seats only</p><h1 className="mt-1 font-serif-display text-5xl text-foreground">A quiet room.</h1><p className="mt-1 text-sm text-muted-foreground">Send and receive messages in real-time.</p><div className="mt-2 flex items-center gap-2"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" /><span className="font-mono-ui text-[10px] uppercase tracking-wider text-muted-foreground">online</span></div></div>
     <Surface className="overflow-hidden border border-border bg-card shadow-xl">
-      <div className="flex items-center justify-between border-b border-border/60 px-5 py-4 md:px-7"><div className="flex items-center gap-3"><Avatar user={partner} /><div><p data-testid="text-chat-partner" className="text-sm font-semibold text-foreground">{partnerLoading ? 'Finding partner…' : partner?.displayName || 'Chat Partner'}</p><p className="mt-0.5 text-xs text-muted-foreground">Shared room</p></div></div><LockKeyhole size={17} className="text-primary" /></div>
+      <div className="flex items-center justify-between border-b border-border/60 px-5 py-4 md:px-7">
+        <div className="flex items-center gap-3"><Avatar user={partner} /><div><p data-testid="text-chat-partner" className="text-sm font-semibold text-foreground">{partnerLoading ? 'Finding partner…' : partner?.displayName || 'Chat Partner'}</p><p className="mt-0.5 text-xs text-muted-foreground">Shared room</p></div></div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="button-disconnect-partner"
+            onClick={handleDisconnectPartner}
+            title="Disconnect Partner"
+            className="flex items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 transition cursor-pointer"
+          >
+            <LogOut size={13} /> Disconnect
+          </button>
+        </div>
+      </div>
       <div className="min-h-[430px] space-y-5 px-4 py-6 md:px-7">
         {isLoading ? <ChatSkeleton /> : isError ? <ErrorState label="Messages could not be loaded." action={refetch} /> : (messages || []).length === 0 && !localTempMsg ? <div className="flex min-h-[360px] flex-col items-center justify-center text-center"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><MessageCircle size={24} /></div><p className="mt-5 font-serif-display text-2xl text-foreground">No messages yet.</p><p className="mt-2 max-w-xs text-sm text-muted-foreground">Type a message below to start the conversation.</p></div> : (
           <>
@@ -1727,7 +1762,7 @@ function Router() {
     <Route path="/splash" component={GetStartedPage} />
     <Route path="/welcome" component={GetStartedPage} />
     <Route path="/signup" component={SignUpPage} />
-    <Route path="/login">{hasVisited ? <LoginPage /> : <GetStartedPage />}</Route>
+    <Route path="/login"><LoginPage /></Route>
     <Route path="/pin" component={PinPage} />
     <Route path="/forgot-password" component={ForgotPasswordPage} />
     <Route path="/reset-password" component={ResetPasswordPage} />
