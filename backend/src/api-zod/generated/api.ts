@@ -77,6 +77,29 @@ export const LogoutEverywhereResponse = zod.void()
 
 
 /**
+ * @summary Update the signed-in user's profile details
+ */
+export const updateProfileBodyDisplayNameMax = 100;
+
+export const updateProfileBodyPasswordMin = 6;
+export const updateProfileBodyPasswordMax = 200;
+
+
+
+export const UpdateProfileBody = zod.object({
+  "displayName": zod.string().min(1).max(updateProfileBodyDisplayNameMax).optional(),
+  "password": zod.string().min(updateProfileBodyPasswordMin).max(updateProfileBodyPasswordMax).optional()
+})
+
+export const UpdateProfileResponse = zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "email": zod.string(),
+  "profilePhotoUrl": zod.string().nullable()
+})
+
+
+/**
  * @summary List shared tasks
  */
 export const ListTasksQueryParams = zod.object({

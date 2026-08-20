@@ -71,6 +71,7 @@ import {
   useLogoutEverywhere,
   useSendMessage,
   useUpdateSettings,
+  useUpdateProfile,
   useUpdateTask,
   type AppSettings,
   type Message,
@@ -1622,21 +1623,58 @@ function MyProfileSection({ user, onSignOut }: { user?: User | null; onSignOut: 
   const [showPass, setShowPass] = useState(false);
   const [passMsg, setPassMsg] = useState('');
 
+  const updateProfile = useUpdateProfile();
+  const client = useQueryClient();
+
+  useEffect(() => {
+    if (user?.displayName) {
+      setName(user.displayName);
+    }
+  }, [user?.displayName]);
+
   const saveName = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setSavedNameMsg('Display name updated!');
-    setTimeout(() => setSavedNameMsg(''), 2500);
+    updateProfile.mutate(
+      { data: { displayName: name.trim() } },
+      {
+        onSuccess: (updatedUser) => {
+          client.setQueryData(getGetCurrentUserQueryKey(), updatedUser);
+          client.invalidateQueries({ queryKey: getGetTaskSummaryQueryKey() });
+          client.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          setSavedNameMsg('Display name updated!');
+          setTimeout(() => setSavedNameMsg(''), 2500);
+        },
+        onError: (err: any) => {
+          const errorMsg = err?.response?.data?.error || err?.message || 'Failed to update name';
+          setSavedNameMsg(errorMsg);
+          setTimeout(() => setSavedNameMsg(''), 4000);
+        }
+      }
+    );
   };
 
   const updatePassword = (e: FormEvent) => {
     e.preventDefault();
     if (pass.length < 6) return setPassMsg('Password must be at least 6 characters.');
     if (pass !== confirmPass) return setPassMsg('Passwords do not match.');
-    setPass('');
-    setConfirmPass('');
-    setPassMsg('Password updated successfully!');
-    setTimeout(() => setPassMsg(''), 2500);
+
+    updateProfile.mutate(
+      { data: { password: pass } },
+      {
+        onSuccess: () => {
+          setPass('');
+          setConfirmPass('');
+          setPassMsg('Password updated successfully!');
+          setTimeout(() => setPassMsg(''), 2500);
+        },
+        onError: (err: any) => {
+          const errorMsg = err?.response?.data?.error || err?.message || 'Failed to update password';
+          setPassMsg(errorMsg);
+          setTimeout(() => setPassMsg(''), 4000);
+        }
+      }
+    );
   };
 
   return (
@@ -1654,7 +1692,9 @@ function MyProfileSection({ user, onSignOut }: { user?: User | null; onSignOut: 
           <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Display Name</span>
           <div className="flex gap-2">
             <input data-testid="input-profile-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your Name" className="min-h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
-            <Button type="submit" className="shrink-0">Save Name</Button>
+            <Button type="submit" className="shrink-0" disabled={updateProfile.isPending}>
+              {updateProfile.isPending && !pass ? 'Saving...' : 'Save Name'}
+            </Button>
           </div>
         </label>
         {savedNameMsg && <p className="text-xs font-medium text-primary">{savedNameMsg}</p>}
@@ -1679,7 +1719,9 @@ function MyProfileSection({ user, onSignOut }: { user?: User | null; onSignOut: 
         </div>
         <input data-testid="input-profile-confirm-password" type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} placeholder="Confirm new password" className="min-h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
         {passMsg && <p className={cx('text-xs font-medium', passMsg.includes('successfully') ? 'text-primary' : 'text-destructive')}>{passMsg}</p>}
-        <Button type="submit" className="w-full">Update Password</Button>
+        <Button type="submit" className="w-full" disabled={updateProfile.isPending}>
+          {updateProfile.isPending && pass ? 'Updating...' : 'Update Password'}
+        </Button>
       </form>
 
       <div className="pt-4 border-t border-border/60">

@@ -26,6 +26,7 @@ import {
   UpdateTaskParams,
   DeleteTaskParams,
   DeleteMessageParams,
+  UpdateProfileBody,
 } from "../api-zod";
 import { randomUUID } from "node:crypto";
 
@@ -272,6 +273,53 @@ router.post("/auth/devices/logout-everywhere", async (req, res) => {
     .where(eq(sessionsTable.userId, session.user.id));
   res.clearCookie(SESSION_COOKIE);
   return res.status(204).send();
+});
+
+router.patch("/auth/profile", async (req, res) => {
+  const session = await requireSession(req, res);
+  if (!session) return;
+
+  const parsed = UpdateProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Profile update input is invalid" });
+  }
+
+  const { displayName, password } = parsed.data;
+  const updateData: { displayName?: string; passwordHash?: string } = {};
+
+  if (displayName !== undefined) {
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      return res.status(400).json({ error: "Display name cannot be empty" });
+    }
+    updateData.displayName = trimmedName;
+  }
+
+  if (password !== undefined) {
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long" });
+    }
+    updateData.passwordHash = await bcrypt.hash(password, 10);
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    await db
+      .update(usersTable)
+      .set(updateData)
+      .where(eq(usersTable.id, session.user.id));
+  }
+
+  const updatedUsers = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, session.user.id))
+    .limit(1);
+  const updatedUser = updatedUsers[0];
+  if (!updatedUser) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  return res.json(publicUser(updatedUser));
 });
 
 router.get("/tasks", async (req, res) => {

@@ -239,6 +239,19 @@ export interface Journey {
   url: string;
 }
 
+export interface UpdateProfileInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  displayName?: string;
+  /**
+     * @minLength 6
+     * @maxLength 200
+     */
+  password?: string;
+}
+
 export type ListTasksParams = {
 status?: ListTasksStatus;
 };

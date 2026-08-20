@@ -31,4 +31,5 @@ export * from './taskStatus';
 export * from './taskSummary';
 export * from './taskUpdate';
 export * from './taskUpdateStatus';
+export * from './updateProfileInput';
 export * from './user';

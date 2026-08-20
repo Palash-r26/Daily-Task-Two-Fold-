@@ -94,6 +94,26 @@ paths:
       responses:
         "204":
           description: Sessions revoked
+  /auth/profile:
+    patch:
+      operationId: updateProfile
+      tags: [auth]
+      summary: Update the signed-in user's profile details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileInput"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid input or password too short
   /tasks:
     get:
       operationId: listTasks
@@ -439,4 +459,9 @@ components:
         title: { type: string }
         description: { type: string }
         url: { type: string }
+    UpdateProfileInput:
+      type: object
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 6, maxLength: 200 }
 
